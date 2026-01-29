@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Life Tracker: Auto-Coach</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #f8fafc; --card-bg: #ffffff; --text-main: #1e293b; --text-muted: #64748b;
+            --p-purple: #8b5cf6; --p-pink: #ec4899; --p-green: #10b981;  
+            --p-blue: #3b82f6; --p-yellow: #f59e0b; --p-orange: #f97316;
+            --border: #e2e8f0;
+            --shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.025);
+            --radius: 20px;
+        }
+
+        body { font-family: 'Outfit', sans-serif; background-color: var(--bg); color: var(--text-main); margin: 0; padding: 20px; transition: background 0.3s; }
+        .container { max-width: 1200px; margin: 0 auto; }
+
+        /* CALENDAR STRIP */
+        .calendar-strip { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 20px; margin-bottom: 20px; scrollbar-width: thin; }
+        .date-card {
+            background: var(--card-bg); border: 2px solid white;
+            min-width: 70px; height: 90px; border-radius: 18px;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            cursor: pointer; transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); flex-shrink: 0; position: relative;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.02);
+        }
+        .date-card:hover { transform: translateY(-4px); border-color: var(--p-purple); }
+        .date-card.active { background: var(--p-purple); color: white; border-color: var(--p-purple); box-shadow: 0 10px 20px rgba(139, 92, 246, 0.3); }
+        .date-card.active .day-name, .date-card.active .day-num { color: white; }
+        .mood-dot { position: absolute; top: -5px; right: -5px; background: white; border-radius: 50%; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; font-size: 14px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); border: 1px solid var(--border); }
+        .day-name { font-size: 0.7rem; text-transform: uppercase; margin-bottom: 4px; color: var(--text-muted); font-weight: 700; letter-spacing: 0.5px; }
+        .day-num { font-size: 1.4rem; font-weight: 800; }
+
+        /* LAYOUT & CARDS */
+        .grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 24px; margin-bottom: 40px; }
+        .card { background: var(--card-bg); padding: 28px; border-radius: var(--radius); border: 1px solid white; box-shadow: var(--shadow); position: relative; overflow: hidden; }
+        .card-header { font-size: 1.3rem; font-weight: 800; margin-bottom: 24px; display: flex; align-items: center; gap: 12px; }
+
+        .input-group { margin-bottom: 18px; }
+        .input-group label { display: block; color: var(--text-muted); font-size: 0.85rem; margin-bottom: 8px; font-weight: 600; }
+        input { width: 100%; padding: 14px; background: #f8fafc; border: 2px solid var(--border); color: var(--text-main); border-radius: 14px; box-sizing: border-box; font-weight: 600; font-family: inherit; transition: 0.2s; }
+        input:focus { outline: none; border-color: var(--p-purple); background: white; box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.1); }
+
+        /* MOOD BUTTONS */
+        .mood-grid { display: flex; justify-content: space-between; gap: 5px; margin-top: 10px; }
+        .mood-btn { background: #f8fafc; border: 2px solid var(--border); border-radius: 14px; width: 100%; aspect-ratio: 1; font-size: 1.8rem; cursor: pointer; transition: 0.2s; display: flex; align-items: center; justify-content: center; }
+        .mood-btn:hover { transform: scale(1.1); background: white; border-color: var(--p-orange); }
+        .mood-btn.selected { background: var(--p-orange); border-color: var(--p-orange); transform: scale(1.1); box-shadow: 0 10px 20px rgba(249, 115, 22, 0.2); }
+
+        /* BUTTONS */
+        .btn-icon { width: 44px; height: 44px; border-radius: 14px; border: 2px solid var(--border); background: white; color: var(--text-main); cursor: pointer; font-size: 1.2rem; font-weight: bold; transition: 0.2s;}
+        .btn-icon:hover { border-color: var(--p-purple); color: var(--p-purple); transform: translateY(-2px); }
+        
+        .save-btn { width: 100%; padding: 18px; background: linear-gradient(135deg, #8b5cf6, #6d28d9); color: white; border: none; border-radius: 18px; font-weight: 700; font-size: 1.1rem; cursor: pointer; margin-top: 20px; box-shadow: 0 10px 25px -5px rgba(139, 92, 246, 0.4); transition: transform 0.1s, box-shadow 0.2s; }
+        .save-btn:hover { transform: translateY(-2px); box-shadow: 0 15px 30px -5px rgba(139, 92, 246, 0.5); }
+        .save-btn:active { transform: scale(0.98); }
+
+        /* AI FEEDBACK CARD (NEW) */
+        .ai-feedback-box { background: #f0fdfa; border: 2px solid #ccfbf1; border-radius: 16px; padding: 20px; margin-top: 30px; display: none; }
+        .ai-feedback-box.loading { display: flex; align-items: center; justify-content: center; height: 100px; color: var(--p-green); font-weight: bold; }
+
+        /* CHAT */
+        .chat-box { height: 350px; overflow-y: auto; background: #f8fafc; border: 2px solid var(--border); border-radius: 16px; padding: 20px; margin-bottom: 15px; display: flex; flex-direction: column; gap: 12px; }
+        .msg { padding: 12px 18px; border-radius: 16px; max-width: 85%; line-height: 1.6; font-size: 0.95rem; }
+        .msg.user { background: var(--p-blue); color: white; align-self: flex-end; border-bottom-right-radius: 4px; box-shadow: 0 4px 10px rgba(59, 130, 246, 0.2); }
+        .msg.ai { background: white; border: 1px solid var(--border); color: var(--text-main); align-self: flex-start; border-bottom-left-radius: 4px; box-shadow: var(--shadow); }
+
+        /* MODAL */
+        .modal-overlay { position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(255,255,255,0.8); display: none; justify-content: center; align-items: center; z-index: 1000; backdrop-filter: blur(8px); }
+        .modal-box { background: white; padding: 40px; border-radius: 30px; width: 90%; max-width: 450px; border: 1px solid var(--border); text-align: center; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.15); }
+
+        /* CHARTS */
+        .chart-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 24px; margin-bottom: 40px; }
+        .chart-card { background: white; padding: 24px; border-radius: 24px; border: 1px solid var(--border); box-shadow: var(--shadow); height: 320px; position: relative; }
+        .data-btn { padding: 12px 20px; border: none; border-radius: 12px; font-weight: 700; cursor: pointer; color: white; transition: 0.2s; font-size: 0.9rem; }
+
+        @media (max-width: 768px) { .chart-grid { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+
+<div class="modal-overlay" id="profileModal">
+    <div class="modal-box">
+        <div style="font-size: 3rem; margin-bottom: 10px;">👋</div>
+        <h2 style="margin:0 0 10px 0; color:var(--text-main); font-size:2rem;">Hello!</h2>
+        <p style="color:var(--text-muted); margin-bottom:30px; font-size:1.1rem;">Please enter your height to calculate BMI.</p>
+        <input type="number" id="initHeight" placeholder="Height in cm (e.g. 175)" style="margin-bottom:20px; font-size:1.2rem; text-align:center;">
+        <button class="save-btn" onclick="saveProfile()">Start Tracking 🚀</button>
+    </div>
+</div>
+
+<div class="container">
+    <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:30px; margin-top:20px;">
+        <div>
+            <div style="font-size:0.9rem; color:var(--text-muted); font-weight:600; text-transform:uppercase; letter-spacing:1px;" id="currentDate">TODAY</div>
+            <h1 style="margin:5px 0 0 0; color:var(--text-main); font-size:2.5rem;" id="greeting">Welcome Back</h1>
+            <div style="color:var(--p-purple); font-weight:600; margin-top:5px;" id="streakDisplay">🔥 0 Day Streak</div>
+        </div>
+        <button onclick="document.getElementById('datePicker').showPicker()" style="background:white; border:2px solid var(--border); padding:10px 20px; border-radius: 14px; color:var(--text-main); cursor:pointer; font-weight:700; display:flex; align-items:center; gap:8px; box-shadow:var(--shadow);">
+            📅 History
+        </button>
+        <input type="date" id="datePicker" onchange="selectDate(this.value)" style="display:none; position:absolute;">
+    </div>
+
+    <div class="calendar-strip" id="calendarStrip"></div>
+
+    <div id="aiFeedbackBox" class="ai-feedback-box">
+        </div>
+
+    <div class="grid-3">
+        <div class="card" style="border-top: 6px solid var(--p-orange)">
+            <div class="card-header" style="color:var(--p-orange);">😊 Mood & Mind</div>
+            <label style="color:var(--text-muted); font-size:0.85rem; font-weight:600;">How are you feeling?</label>
+            <div class="mood-grid">
+                <div class="mood-btn" onclick="setMood('😫')" id="mood_1">😫</div>
+                <div class="mood-btn" onclick="setMood('😕')" id="mood_2">😕</div>
+                <div class="mood-btn" onclick="setMood('😐')" id="mood_3">😐</div>
+                <div class="mood-btn" onclick="setMood('🙂')" id="mood_4">🙂</div>
+                <div class="mood-btn" onclick="setMood('🤩')" id="mood_5">🤩</div>
+            </div>
+            <input type="hidden" id="moodInput">
+            <div style="margin-top:25px;">
+                <div class="input-group"><label>📖 Reading (mins)</label><input type="number" id="reading" placeholder="0"></div>
+                <div class="input-group"><label>📱 Screen Time (mins)</label><input type="number" id="screenTime" placeholder="0"></div>
+            </div>
+        </div>
+
+        <div class="card" style="border-top: 6px solid var(--p-pink)">
+            <div class="card-header" style="color:var(--p-pink);">💪 Body & BMI</div>
+            <div style="display:flex; justify-content:space-between; margin-bottom:20px; background:#fff1f2; padding:15px; border-radius:16px; border:1px solid #fecdd3;">
+                <div><small style="color:#be123c; font-weight:bold;">YOUR BMI</small><div id="bmiDisplay" style="font-size:1.8rem; font-weight:800; color:#881337;">--</div></div>
+                <div style="text-align:right;"><small style="color:#be123c; font-weight:bold;">HEIGHT</small><div id="heightDisplay" style="color:#881337;">-- cm</div></div>
+            </div>
+            <div class="input-group"><label>⚖️ Weight (kg)</label><input type="number" id="weightInput" placeholder="Log weight..."></div>
+            <div style="display:flex; gap:15px;">
+                <div style="flex:1"><label style="font-size:0.8rem; font-weight:bold; color:var(--text-muted);">Walk (min)</label><input type="number" id="walking"></div>
+                <div style="flex:1"><label style="font-size:0.8rem; font-weight:bold; color:var(--text-muted);">Strength (min)</label><input type="number" id="strength"></div>
+            </div>
+        </div>
+
+        <div class="card" style="border-top: 6px solid var(--p-green)">
+            <div class="card-header" style="color:var(--p-green);">🥗 Fuel</div>
+            <div class="input-group"><label>💧 Water (ml)</label><input type="number" id="water" placeholder="Goal: 3000ml"></div>
+            <div class="input-group">
+                <label>🍽️ Meals</label>
+                <div style="display:flex; justify-content:space-between; background:#f0fdf4; padding:8px; border-radius:14px; border:1px solid #bbf7d0;">
+                    <button class="btn-icon" onclick="adj('meals', -1)" style="border-color:#bbf7d0; color:#15803d;">-</button>
+                    <span id="meals" style="font-weight:800; font-size:1.4rem; align-self:center; color:#15803d;">0</span>
+                    <button class="btn-icon" onclick="adj('meals', 1)" style="border-color:#bbf7d0; color:#15803d;">+</button>
+                </div>
+            </div>
+            <div style="display:flex; gap:15px; margin-top:20px;">
+                <div style="flex:1; text-align:center;">
+                    <label style="font-size:0.8rem; font-weight:bold; color:var(--text-muted);">Junk</label>
+                    <div style="display:flex; justify-content:center; gap:8px; align-items:center;">
+                        <span id="junk" style="color:var(--p-pink); font-weight:800; font-size:1.4rem;">0</span>
+                        <button onclick="adj('junk', 1)" style="background:var(--p-pink); border:none; color:white; border-radius:10px; width:28px; height:28px; cursor:pointer; font-weight:bold;">+</button>
+                    </div>
+                </div>
+                <div style="flex:1; text-align:center;">
+                    <label style="font-size:0.8rem; font-weight:bold; color:var(--text-muted);">Healthy</label>
+                    <div style="display:flex; justify-content:center; gap:8px; align-items:center;">
+                        <span id="healthy" style="color:var(--p-green); font-weight:800; font-size:1.4rem;">0</span>
+                        <button onclick="adj('healthy', 1)" style="background:var(--p-green); border:none; color:white; border-radius:10px; width:28px; height:28px; cursor:pointer; font-weight:bold;">+</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <button class="save-btn" onclick="saveData()">💾 Update My Day & Get Feedback</button>
+
+    <h2 style="margin-top:60px; color:var(--text-main); letter-spacing:-0.5px;">📊 Your Progress</h2>
+    <div class="chart-grid">
+        <div class="chart-card"><canvas id="pieChart"></canvas></div>
+        <div class="chart-card"><canvas id="workoutChart"></canvas></div>
+        <div class="chart-card"><canvas id="weightChart"></canvas></div>
+        <div class="chart-card"><canvas id="waterChart"></canvas></div>
+        <div class="chart-card"><canvas id="dietChart"></canvas></div>
+    </div>
+
+    <div class="card" style="border: 2px solid var(--p-blue);">
+        <div class="card-header" style="justify-content:space-between;">
+            <span style="color:var(--p-blue);">🤖 Expert Chat</span>
+            <input type="text" id="ollamaModel" value="llama3" style="width:100px; border:none; background:transparent; text-align:right; font-weight:bold; color:var(--text-muted);" placeholder="Model">
+        </div>
+        <div class="chat-box" id="chatWindow">
+            <div class="msg ai">Hi! I'm here to dive deeper if you need me.</div>
+        </div>
+        <div style="display:flex; gap:10px;">
+            <input type="text" id="chatInput" placeholder="Ask specific questions..." onkeypress="if(event.key==='Enter') sendMessage()">
+            <button onclick="sendMessage()" style="padding:0 24px; background:var(--p-blue); border:none; border-radius:12px; color:white; font-weight:bold; cursor:pointer; font-size:1.2rem;">➤</button>
+        </div>
+    </div>
+
+    <div class="card" style="margin-top:40px; border:2px dashed var(--border); background:transparent; box-shadow:none;">
+        <div style="display:flex; gap:15px; flex-wrap:wrap; justify-content:center;">
+            <button class="data-btn" onclick="exportData()" style="background:#0ea5e9;">📥 Export Data</button>
+            <button class="data-btn" onclick="clearToday()" style="background:#f59e0b;">🧹 Reset Today</button>
+            <button class="data-btn" onclick="wipeAll()" style="background:#ef4444;">⚠️ Factory Reset</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // --- STATE ---
+    let db = JSON.parse(localStorage.getItem('myLifeDB')) || {};
+    let userProfile = JSON.parse(localStorage.getItem('myUserProfile')) || { height: null };
+    let selectedDate = new Date().toISOString().split('T')[0];
+    let chatHistory = [];
+    let charts = {};
+
+    initApp();
+
+    function initApp() {
+        // Welcome
+        const hour = new Date().getHours();
+        document.getElementById('greeting').innerText = hour < 12 ? "Good Morning ☀️" : (hour < 18 ? "Good Afternoon 🌤️" : "Good Evening 🌙");
+        document.getElementById('currentDate').innerText = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+
+        if (!userProfile.height) document.getElementById('profileModal').style.display = 'flex';
+        else document.getElementById('heightDisplay').innerText = userProfile.height + " cm";
+        
+        renderCalendarStrip();
+        loadDate(selectedDate);
+        calcStreak();
+        setTimeout(updateCharts, 500);
+    }
+
+    // --- LOGIC ---
+    function saveProfile() {
+        const h = document.getElementById('initHeight').value;
+        if(h) {
+            userProfile.height = parseInt(h);
+            localStorage.setItem('myUserProfile', JSON.stringify(userProfile));
+            document.getElementById('profileModal').style.display = 'none';
+            initApp();
+        }
+    }
+
+    function setMood(emoji) {
+        document.getElementById('moodInput').value = emoji;
+        document.querySelectorAll('.mood-btn').forEach(b => b.classList.remove('selected'));
+        const map = {'😫':1, '😕':2, '😐':3, '🙂':4, '🤩':5};
+        if(map[emoji]) document.getElementById(`mood_${map[emoji]}`).classList.add('selected');
+    }
+
+    function loadDate(date) {
+        const entry = db[date] || { habits:{}, workout:{}, diet:{meals:0, junk:0, healthy:0}, weight: null, mood: null };
+        document.getElementById('reading').value = entry.habits.reading || '';
+        document.getElementById('screenTime').value = entry.habits.screenTime || '';
+        document.getElementById('walking').value = entry.workout.walking || '';
+        document.getElementById('strength').value = entry.workout.strength || '';
+        document.getElementById('weightInput').value = entry.weight || '';
+        document.getElementById('water').value = entry.diet.water || '';
+        document.getElementById('meals').innerText = entry.diet.meals || 0;
+        document.getElementById('junk').innerText = entry.diet.junk || 0;
+        document.getElementById('healthy').innerText = entry.diet.healthy || 0;
+        setMood(entry.mood || ''); 
+        if(entry.weight) updateBMI(entry.weight);
+        else { const keys = Object.keys(db).sort().reverse(); for(let k of keys) { if(db[k].weight) { updateBMI(db[k].weight); break; } } }
+    }
+
+    function updateBMI(w) {
+        if(w && userProfile.height) {
+            const h = userProfile.height / 100;
+            const bmi = (w / (h*h)).toFixed(1);
+            document.getElementById('bmiDisplay').innerText = bmi;
+        }
+    }
+
+    function saveData() {
+        if(!db[selectedDate]) db[selectedDate] = {};
+        const e = db[selectedDate];
+        e.mood = document.getElementById('moodInput').value;
+        e.habits = {
+            reading: parseInt(document.getElementById('reading').value) || 0,
+            screenTime: parseInt(document.getElementById('screenTime').value) || 0,
+        };
+        e.workout = {
+            walking: parseInt(document.getElementById('walking').value) || 0,
+            strength: parseInt(document.getElementById('strength').value) || 0,
+        };
+        e.weight = parseFloat(document.getElementById('weightInput').value) || null;
+        e.diet = {
+            water: parseInt(document.getElementById('water').value) || 0,
+            meals: parseInt(document.getElementById('meals').innerText),
+            junk: parseInt(document.getElementById('junk').innerText),
+            healthy: parseInt(document.getElementById('healthy').innerText)
+        };
+        
+        localStorage.setItem('myLifeDB', JSON.stringify(db));
+        renderCalendarStrip();
+        updateCharts();
+        calcStreak();
+        
+        // TRIGGER AUTO FEEDBACK
+        generateDailyFeedback();
+    }
+
+    // --- AUTOMATIC AI FEEDBACK ---
+    async function generateDailyFeedback() {
+        const feedbackBox = document.getElementById('aiFeedbackBox');
+        feedbackBox.style.display = 'block';
+        feedbackBox.innerHTML = `<div class="ai-feedback-box loading">🤖 Coach is analyzing your day...</div>`;
+        
+        const modelName = document.getElementById('ollamaModel').value || "llama3";
+        
+        // CONTEXT: LAST 3 MONTHS (90 DAYS)
+        let contextData = "HISTORY (Last 90 Days):\n";
+        const dates = Object.keys(db).sort().reverse().slice(0, 90); // Last 90 entries
+        
+        dates.forEach(d => {
+            const e = db[d];
+            contextData += `[${d}] Mood:${e.mood||'-'}, Water:${e.diet.water}ml, Junk:${e.diet.junk}, Healthy:${e.diet.healthy}, Screen:${e.habits.screenTime}m, Workout:${(e.workout.walking||0)+(e.workout.strength||0)}m\n`;
+        });
+
+        // Prompt
+        const prompt = `Act as a strict but motivating fitness coach. Analyze today's performance compared to the last 90 days of history. 
+        Give me a "Daily Report Card" with 3 specific bullet points of feedback. 
+        If today was good, celebrate it. If bad, give a correction. Keep it under 100 words.
+        \n\n${contextData}`;
+
+        try {
+            const response = await fetch('http://localhost:11434/api/generate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    model: modelName,
+                    prompt: prompt,
+                    stream: false
+                })
+            });
+
+            if (!response.ok) throw new Error("Ollama error");
+            const data = await response.json();
+            
+            feedbackBox.innerHTML = `
+                <div style="font-weight:bold; color:#10b981; margin-bottom:10px;">✨ Daily Report Card</div>
+                <div style="font-size:0.95rem; line-height:1.6; color:#1e293b;">${marked.parse(data.response)}</div>
+            `;
+            
+        } catch (err) {
+            feedbackBox.innerHTML = `<div style="color:red">⚠️ AI Error: Ensure Ollama is running. Data saved successfully regardless.</div>`;
+        }
+    }
+
+    // --- CHAT ---
+    async function sendMessage() {
+        const input = document.getElementById('chatInput');
+        const text = input.value.trim();
+        if(!text) return;
+        const win = document.getElementById('chatWindow');
+        win.innerHTML += `<div class='msg user'>${text}</div>`;
+        input.value = ''; win.scrollTop = win.scrollHeight;
+        
+        // Provide same 90-day context to chat
+        let contextData = "HISTORY (Last 90 Days):\n";
+        const dates = Object.keys(db).sort().reverse().slice(0, 90);
+        dates.forEach(d => {
+            const e = db[d];
+            contextData += `[${d}] Mood:${e.mood||'-'}, Water:${e.diet.water}ml, Workout:${(e.workout.walking||0)+(e.workout.strength||0)}m\n`;
+        });
+
+        const model = document.getElementById('ollamaModel').value || "llama3";
+        try {
+            const res = await fetch('http://localhost:11434/api/chat', {
+                method: 'POST',
+                headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({
+                    model: model,
+                    messages: [{role:"system", content:`You are an expert coach. Context:\n${contextData}`}, ...chatHistory, {role:"user", content:text}],
+                    stream: false
+                })
+            });
+            const data = await res.json();
+            win.innerHTML += `<div class='msg ai'>${marked.parse(data.message.content)}</div>`;
+            chatHistory.push({role:"user", content:text});
+            chatHistory.push({role:"assistant", content:data.message.content});
+        } catch(e) { win.innerHTML += `<div class='msg ai' style='color:red'>Connection Error</div>`; }
+        win.scrollTop = win.scrollHeight;
+    }
+
+    // --- HELPERS (Calendar, Adj, Charts, Data) ---
+    function renderCalendarStrip() {
+        const strip = document.getElementById('calendarStrip');
+        strip.innerHTML = '';
+        const start = new Date(); start.setDate(start.getDate() - 10);
+        for (let i = 0; i < 14; i++) {
+            const d = new Date(start); d.setDate(start.getDate() + i);
+            const dateStr = d.toISOString().split('T')[0];
+            const e = db[dateStr];
+            const div = document.createElement('div');
+            div.className = `date-card ${dateStr === selectedDate ? 'active' : ''}`;
+            div.onclick = () => selectDate(dateStr);
+            let mood = e && e.mood ? `<div class="mood-dot">${e.mood}</div>` : '';
+            div.innerHTML = `${mood}<span class="day-name">${d.toLocaleDateString('en-US',{weekday:'short'})}</span><span class="day-num">${d.getDate()}</span>`;
+            strip.appendChild(div);
+        }
+        setTimeout(() => { const active = strip.querySelector('.active'); if(active) active.scrollIntoView({behavior:'smooth', inline:'center'}); }, 100);
+    }
+    function selectDate(d) { selectedDate = d; document.getElementById('datePicker').value = d; renderCalendarStrip(); loadDate(d); document.getElementById('aiFeedbackBox').style.display='none'; }
+    function adj(id, val) { const el = document.getElementById(id); el.innerText = Math.max(0, parseInt(el.innerText) + val); }
+    function calcStreak() {
+        let streak = 0; const today = new Date();
+        for(let i=0; i<365; i++) { const d=new Date(); d.setDate(today.getDate()-i); if(db[d.toISOString().split('T')[0]]) streak++; else if(i>0) break; }
+        document.getElementById('streakDisplay').innerText = `🔥 ${streak} Day Streak`;
+    }
+    function updateCharts() {
+        const dates = Object.keys(db).sort().slice(-14);
+        const labels = dates.map(d => d.slice(5));
+        const data = {
+            walk: dates.map(d => db[d].workout.walking || 0),
+            strength: dates.map(d => db[d].workout.strength || 0),
+            weight: dates.map(d => db[d].weight || null),
+            water: dates.map(d => db[d].diet.water || 0),
+            healthy: dates.map(d => db[d].diet.healthy || 0),
+            junk: dates.map(d => db[d].diet.junk || 0),
+            reading: dates.map(d => db[d].habits.reading || 0),
+            screen: dates.map(d => db[d].habits.screenTime || 0)
+        };
+        const commonOpts = { responsive: true, maintainAspectRatio: false };
+        if(charts.pie) charts.pie.destroy();
+        charts.pie = new Chart(document.getElementById('pieChart'), { type: 'doughnut', data: { labels: ['Reading', 'Screen', 'Workout'], datasets: [{ data: [data.reading.reduce((a,b)=>a+b,0), data.screen.reduce((a,b)=>a+b,0), data.walk.reduce((a,b)=>a+b,0)+data.strength.reduce((a,b)=>a+b,0)], backgroundColor: ['#8b5cf6', '#3b82f6', '#10b981'] }] }, options: commonOpts });
+        if(charts.workout) charts.workout.destroy();
+        charts.workout = new Chart(document.getElementById('workoutChart'), { type: 'bar', data: { labels: labels, datasets: [{ label: 'Walk', data: data.walk, backgroundColor: '#3b82f6' }, { label: 'Strength', data: data.strength, backgroundColor: '#8b5cf6' }] }, options: { ...commonOpts, scales: {x:{stacked:true}, y:{stacked:true}} } });
+        if(charts.weight) charts.weight.destroy();
+        charts.weight = new Chart(document.getElementById('weightChart'), { type: 'line', data: { labels: labels, datasets: [{ label: 'Weight', data: data.weight, borderColor: '#ec4899', tension:0.4, spanGaps:true }] }, options: commonOpts });
+        if(charts.water) charts.water.destroy();
+        charts.water = new Chart(document.getElementById('waterChart'), { type: 'line', data: { labels: labels, datasets: [{ label: 'Water', data: data.water, borderColor: '#3b82f6', backgroundColor: '#dbeafe', fill:true }] }, options: commonOpts });
+        if(charts.diet) charts.diet.destroy();
+        charts.diet = new Chart(document.getElementById('dietChart'), { type: 'bar', data: { labels: labels, datasets: [{ label: 'Healthy', data: data.healthy, backgroundColor: '#10b981' }, { label: 'Junk', data: data.junk, backgroundColor: '#ef4444' }] }, options: commonOpts });
+    }
+    function exportData() { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(db)], {type:'application/json'})); a.download = `backup_${selectedDate}.json`; document.body.appendChild(a); a.click(); document.body.removeChild(a); }
+    function clearToday() { if(confirm(`Clear ${selectedDate}?`)) { delete db[selectedDate]; localStorage.setItem('myLifeDB', JSON.stringify(db)); loadDate(selectedDate); renderCalendarStrip(); updateCharts(); alert("Cleared!"); } }
+    function wipeAll() { if(confirm("Wipe ALL?")) { localStorage.clear(); location.reload(); } }
+</script>
+</body>
+</html>
